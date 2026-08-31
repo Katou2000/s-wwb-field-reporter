@@ -1,0 +1,18 @@
+# Local Supabase configuration (never commit credentials)
+js/config.js
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Local server / tooling output
+node_modules/
+dist/
+coverage/
+*.log
+
+# Local implementation input packs
+_codex_input/

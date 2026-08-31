@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="ja" data-theme="light">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#19362f">
+    <meta name="description" content="playerとrequesterが現場セッションをリアルタイム共有するWWB Field Reporter">
+    <title>S WWB Field Reporter</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script type="module" src="js/app.js"></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand-mark" aria-hidden="true">W</div>
+      <div><p class="eyebrow">S WWB</p><h1>Field Reporter</h1></div>
+      <span id="connection-state" class="connection-state" aria-live="polite"></span>
+      <button id="open-options-button" class="icon-button" type="button" aria-label="オプションを開く">⚙</button>
+    </header>
+
+    <main class="app-shell">
+      <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+
+      <section id="loading-view" class="view centered-view">
+        <div class="spinner" aria-hidden="true"></div><p>アプリを準備しています…</p>
+      </section>
+
+      <section id="setup-view" class="view centered-view" hidden>
+        <div class="icon-circle" aria-hidden="true">!</div>
+        <h2>Supabaseの設定が必要です</h2>
+        <p id="setup-message" class="muted"></p>
+        <div class="setup-steps"><code>js/config.example.js</code> を参考に、ローカルの <code>js/config.js</code> へURLとPublishable keyを設定してください。</div>
+      </section>
+
+      <section id="home-view" class="view" hidden>
+        <div class="hero-card">
+          <p class="eyebrow">LIVE SESSION BOARD</p>
+          <h2>同じ現場を、<br>ふたりで見る。</h2>
+          <p>セッションの状況をリアルタイムで共有します。</p>
+        </div>
+        <div class="action-grid">
+          <button id="open-create-button" class="primary-button action-button" type="button"><span class="button-icon" aria-hidden="true">＋</span><span><strong>セッションを開始</strong><small>playerとして新しく作成</small></span></button>
+          <button id="open-join-button" class="secondary-button action-button" type="button"><span class="button-icon" aria-hidden="true">→</span><span><strong>共有コードで参加</strong><small>requesterとして状況を見る</small></span></button>
+        </div>
+        <section id="recent-sessions-section" class="home-section">
+          <div class="section-heading-row"><div><p class="eyebrow">RECENT</p><h3>進行中のセッション</h3></div><button id="refresh-history-button" class="quiet-button" type="button">更新</button></div>
+          <p id="recent-sessions-state" class="muted">読み込み中…</p>
+          <div id="recent-sessions-list" class="recent-session-list"></div>
+          <details id="finished-sessions-folder" class="finished-session-folder">
+            <summary><span>終了済みセッション</span><span id="finished-sessions-count" class="folder-count">0</span></summary>
+            <div id="finished-sessions-list" class="recent-session-list finished-session-list"></div>
+          </details>
+        </section>
+      </section>
+
+      <section id="create-view" class="view" hidden>
+        <div class="view-heading"><button class="back-button" data-back-home type="button" aria-label="トップに戻る">←</button><div><p class="eyebrow">NEW SESSION</p><h2>セッションを開始</h2></div></div>
+        <form id="create-form" class="form-card">
+          <label>店舗名<input name="store_name" autocomplete="organization" maxlength="100" required></label>
+          <label>機種名<input name="machine_name" maxlength="100" required></label>
+          <label>台番号<input name="machine_number" inputmode="numeric" maxlength="20" required></label>
+          <fieldset><legend>貸出条件</legend><div class="inline-fields"><label><span>金額（円）</span><input name="rental_yen" type="number" inputmode="decimal" min="0.01" step="any" value="1000" required></label><span class="field-arrow">→</span><label><span>枚数</span><input name="rental_medals" type="number" inputmode="decimal" min="0.01" step="any" value="46" required></label></div></fieldset>
+          <fieldset><legend>交換条件</legend><div class="inline-fields"><label><span>枚数</span><input name="exchange_medals" type="number" inputmode="decimal" min="0.01" step="any" value="56" required></label><span class="field-arrow">→</span><label><span>金額（円）</span><input name="exchange_yen" type="number" inputmode="decimal" min="0.01" step="any" value="1000" required></label></div></fieldset>
+          <div class="inline-fields two-columns"><label>開始軍資金（円）<input name="starting_funds" type="number" inputmode="numeric" min="0" value="0" required></label><label>開始持ちメダル<input name="starting_medals" type="number" inputmode="numeric" min="0" value="0" required></label></div>
+          <button class="primary-button submit-button" type="submit">セッションを作成</button>
+        </form>
+      </section>
+
+      <section id="join-view" class="view" hidden>
+        <div class="view-heading"><button class="back-button" data-back-home type="button" aria-label="トップに戻る">←</button><div><p class="eyebrow">JOIN SESSION</p><h2>共有コードで参加</h2></div></div>
+        <form id="join-form" class="form-card compact-card"><label>共有コード<input class="share-code-input" name="share_code" maxlength="12" autocomplete="off" required></label><label>表示名 <span class="optional">任意</span><input name="display_name" maxlength="40" autocomplete="nickname"></label><button class="primary-button submit-button" type="submit">セッションを開く</button></form>
+      </section>
+
+      <section id="session-view" class="view session-workspace" hidden>
+        <div class="session-topbar"><div><div class="badge-row"><p id="role-label" class="role-badge"></p><p id="lifecycle-label" class="lifecycle-badge"></p></div><h2 id="session-title"></h2><p id="session-subtitle" class="muted"></p></div><button id="leave-view-button" class="quiet-button" type="button">トップへ</button></div>
+        <div id="session-loading" class="panel-state">セッションデータを読み込んでいます…</div>
+        <div id="finished-banner" class="finished-banner" hidden>このセッションは終了済みです。履歴は引き続き閲覧できます。</div>
+
+        <section data-tab-panel="live" class="tab-panel">
+          <article class="summary-card live-summary-card">
+            <div class="card-heading"><span id="elapsed-time">経過 —</span><span id="realtime-indicator" class="live-badge">○ 接続中</span></div>
+            <div class="difference-block"><span>現在差枚</span><strong id="summary-difference">0枚</strong></div>
+            <div class="current-medals-block"><span>現在持ちメダル</span><strong id="summary-current-medals">0枚</strong></div>
+            <div class="game-summary-grid"><div class="is-primary"><span>現在G</span><strong id="summary-current-game">0G</strong></div><div><span>総G</span><strong id="summary-total-games">0G</strong></div></div>
+            <div class="phase-summary"><span>通常G <strong id="metric-normal_games">0</strong></span><span>AT G <strong id="metric-at_games">0</strong></span><span>BONUS G <strong id="metric-bonus_games">0</strong></span></div>
+            <details class="difference-details"><summary>差枚の計算根拠</summary><dl><div><dt>開始持ちメダル</dt><dd id="difference-starting-medals">0枚</dd></div><div><dt>現金投資</dt><dd id="difference-cash">0円</dd></div><div><dt>投資換算枚数</dt><dd id="difference-investment-medals">0枚</dd></div><div><dt>現在持ちメダル</dt><dd id="difference-current-medals">0枚</dd></div></dl></details>
+          </article>
+
+          <section id="live-counters-section" class="live-counters-section" hidden><div class="section-heading-row"><div><p class="eyebrow">LIVE COUNTERS</p><h3>よく使う小役</h3></div><button class="quiet-button" data-go-counter type="button">編集</button></div><div id="live-counter-list" class="live-counter-list"></div></section>
+
+          <article class="quick-actions-card">
+            <div class="section-heading-row"><div><p class="eyebrow">QUICK ACTIONS</p><h3>すぐ記録</h3></div></div>
+            <div class="quick-action-group"><span>現在G</span><div class="quick-row"><button class="quick-button session-action" data-adjust-metric="current_game" data-delta="1" type="button">+1</button><button class="quick-button session-action" data-adjust-metric="current_game" data-delta="10" type="button">+10</button><button class="quick-button session-action" data-adjust-metric="current_game" data-delta="100" type="button">+100</button></div></div>
+            <div class="quick-action-group"><span>現在持ちメダル</span><div class="quick-row"><button class="quick-button session-action" data-adjust-medals="100" type="button">+100</button><button class="quick-button session-action" data-adjust-medals="500" type="button">+500</button><button class="quick-button session-action" data-adjust-medals="-100" type="button">−100</button></div></div>
+            <div class="quick-main-grid"><button class="cash-quick session-action" data-cash-investment="1000" type="button"><span>+¥1,000</span><small>現金投資</small></button><button class="at-end-quick session-action" data-open-at-end type="button"><span>AT終了</span><small>獲得枚数を記録</small></button></div>
+          </article>
+
+          <article id="status-card" class="status-card compact-status-card" data-status="ready"><div class="card-heading"><span>現在のステータス</span><span id="status-updated-at"></span></div><div class="status-display"><span id="status-icon" class="status-icon" aria-hidden="true">●</span><div><strong id="current-status"></strong><p id="current-status-message"></p></div></div><details class="inline-editor"><summary>ステータスを変更</summary><form id="status-form" class="status-form session-action"><div id="status-options" class="status-options" role="radiogroup"></div><label>メッセージ <span class="optional">任意</span><input name="player_status_message" maxlength="140"></label><button class="primary-button submit-button" type="submit">更新</button></form></details></article>
+
+          <details class="workspace-details"><summary>詳細入力・直接修正</summary>
+            <article class="form-card metric-card"><h3>ゲーム数</h3><div id="metric-controls" class="metric-list">
+              <div class="metric-row" data-metric-row="current_game"><div><span>現在G</span><strong id="metric-current_game">0</strong></div><div class="quick-row"><button class="chip-button session-action" data-adjust-metric="current_game" data-delta="1" type="button">+1</button><button class="chip-button session-action" data-adjust-metric="current_game" data-delta="10" type="button">+10</button><button class="chip-button session-action" data-adjust-metric="current_game" data-delta="100" type="button">+100</button><button class="chip-button danger-text session-action" data-set-metric="current_game" data-value="0" type="button">reset</button></div><form class="metric-set-form session-action" data-metric="current_game"><input name="metric_value" type="number" min="0" inputmode="numeric" aria-label="現在Gを直接入力" required><button type="submit">設定</button></form></div>
+              <div class="metric-row" data-metric-row="total_games"><div><span>総G</span><strong id="metric-total_games">0</strong></div><div class="quick-row"><button class="chip-button session-action" data-adjust-metric="total_games" data-delta="1" type="button">+1</button><button class="chip-button session-action" data-adjust-metric="total_games" data-delta="10" type="button">+10</button><button class="chip-button session-action" data-adjust-metric="total_games" data-delta="100" type="button">+100</button></div><form class="metric-set-form session-action" data-metric="total_games"><input name="metric_value" type="number" min="0" inputmode="numeric" aria-label="総Gを直接入力" required><button type="submit">設定</button></form></div>
+              <div class="metric-row" data-metric-row="normal_games"><div><span>通常G</span><strong id="metric-normal_games-detail">0</strong></div><form class="metric-set-form session-action" data-metric="normal_games"><input name="metric_value" type="number" min="0" inputmode="numeric" required><button type="submit">設定</button></form></div>
+              <div class="metric-row" data-metric-row="at_games"><div><span>AT G</span><strong id="metric-at_games-detail">0</strong></div><form class="metric-set-form session-action" data-metric="at_games"><input name="metric_value" type="number" min="0" inputmode="numeric" required><button type="submit">設定</button></form></div>
+              <div class="metric-row" data-metric-row="bonus_games"><div><span>BONUS G</span><strong id="metric-bonus_games-detail">0</strong></div><form class="metric-set-form session-action" data-metric="bonus_games"><input name="metric_value" type="number" min="0" inputmode="numeric" required><button type="submit">設定</button></form></div>
+            </div></article>
+            <article class="form-card record-card"><h3>投資・持ちメダル</h3><div class="record-section"><strong>現金投資</strong><form id="cash-form" class="compact-inline-form session-action"><input name="cash_yen" type="number" min="1" inputmode="numeric" placeholder="任意金額"><button type="submit">追加</button></form></div><div class="record-section"><strong>持ちメダル投資</strong><form id="medal-form" class="compact-inline-form session-action"><input name="medals" type="number" min="1" inputmode="numeric" placeholder="任意枚数"><button type="submit">追加</button></form></div><div class="record-section"><strong>現在持ちメダルを直接修正</strong><form id="payout-form" class="compact-inline-form session-action"><input name="payout_medals" type="number" min="0" inputmode="numeric" placeholder="現在枚数" required><button type="submit">更新</button></form></div><div class="record-summary"><span>現金投資 <strong id="summary-cash">0円</strong></span><span>持ちメダル投資 <strong id="summary-medals">0枚</strong></span><span>最新スナップショット <strong id="summary-payout">0枚</strong></span></div></article>
+          </details>
+        </section>
+
+        <section data-tab-panel="counter" class="tab-panel" hidden>
+          <div class="section-heading-row"><div><p class="eyebrow">COUNTERS</p><h3>小役カウンター</h3></div></div>
+          <p class="section-note">★を付けた最大4件をライブ画面へ共有表示します。</p>
+          <details class="add-panel"><summary>＋ カウンターを追加</summary><form id="counter-form" class="form-card session-action"><label>名前<input name="name" maxlength="60" required></label><label>分母<select name="phase_key"><option value="total">総G</option><option value="normal">通常G</option><option value="at">AT G</option><option value="bonus">BONUS G</option><option value="custom">任意分母</option></select></label><label id="custom-denominator-field" hidden>任意分母<input name="custom_denominator" type="number" min="1" step="0.1" inputmode="decimal"></label><button class="primary-button submit-button" type="submit">追加</button></form></details>
+          <div id="counter-list" class="stack-list"><div class="panel-state">読み込み中…</div></div>
+        </section>
+
+        <section data-tab-panel="log" class="tab-panel" hidden>
+          <div class="section-heading-row"><div><p class="eyebrow">EVENT LOG</p><h3>ログ</h3></div><button class="primary-mini session-action" data-open-at-end type="button">AT終了</button></div>
+          <div class="quick-row event-quick-row"><button class="chip-button session-action" data-simple-event="continue" type="button">継続</button><button class="chip-button session-action" data-simple-event="break_start" type="button">休憩開始</button><button class="chip-button session-action" data-simple-event="break_end" type="button">休憩終了</button></div>
+          <details class="add-panel"><summary>＋ 出来事・メモを追加</summary><article class="form-card"><form id="hit-form" class="sub-form session-action"><h3>出来事</h3><div class="inline-fields two-columns"><label>ゲーム数<input name="game_count" type="number" min="0" inputmode="numeric"></label><label>タイトル<input name="label" maxlength="60" placeholder="例：奥義" required></label></div><label>タグ <span class="optional">任意</span><input name="tag" maxlength="30" placeholder="例：当選 / CZ / 特化ゾーン"></label><label>補足 <span class="optional">任意</span><input name="note" maxlength="200"></label><button class="primary-button submit-button" type="submit">ログに追加</button></form><form id="memo-form" class="sub-form session-action"><h3>メモ</h3><label>内容<textarea name="note" rows="2" maxlength="300" required></textarea></label><button class="secondary-button submit-button" type="submit">メモを追加</button></form></article></details>
+          <div id="event-list" class="stack-list"><div class="panel-state">読み込み中…</div></div>
+        </section>
+
+        <section data-tab-panel="instruction" class="tab-panel" hidden>
+          <div class="collab-switch" role="tablist" aria-label="共有ボード"><button class="is-active" data-collab-view="instructions" type="button">指示メモ</button><button data-collab-view="board" type="button">掲示板</button></div>
+          <section data-collab-panel="instructions"><div class="section-heading-row"><div><p class="eyebrow">STICKY NOTES</p><h3>指示メモ</h3></div><button id="open-instruction-button" class="floating-add session-action" type="button" aria-label="指示メモを追加">＋</button></div><p class="section-note">判断・お願い・確認事項を付箋として残します。</p><div id="instruction-list" class="stack-list"><div class="panel-state">読み込み中…</div></div></section>
+          <section data-collab-panel="board" hidden><div class="section-heading-row"><div><p class="eyebrow">BOARD</p><h3>掲示板</h3></div></div><p class="section-note">指示とは分けた、ただの会話欄です。新しい投稿が下へ積み上がります。</p><div id="comment-list" class="comment-list"><div class="panel-state">まだ投稿はありません。</div></div><form id="comment-form" class="board-composer session-action"><label class="sr-only" for="board-message">メッセージ</label><textarea id="board-message" name="body" rows="1" maxlength="500" placeholder="メッセージを入力" required></textarea><button type="submit" aria-label="送信">送信</button></form></section>
+        </section>
+
+
+        <section data-tab-panel="image" class="tab-panel" hidden>
+          <div class="section-heading-row"><div><p class="eyebrow">IMAGES</p><h3>画像共有</h3></div></div>
+          <p class="section-note">終了画面や示唆画面など、セッション中に残したい写真を共有します。アップロード時に軽量化して保存します。</p>
+          <form id="image-upload-form" class="image-upload-card session-action">
+            <label class="image-picker"><input id="session-image-input" name="image" type="file" accept="image/jpeg,image/png,image/webp" required><span>＋ 画像を選ぶ</span></label>
+            <label>メモ <span class="optional">任意</span><input name="caption" maxlength="120" placeholder="例：AT終了画面"></label>
+            <button class="primary-button submit-button" type="submit">共有する</button>
+          </form>
+          <div id="image-list" class="image-grid"><div class="panel-state">まだ画像はありません。</div></div>
+        </section>
+
+        <section data-tab-panel="info" class="tab-panel" hidden>
+          <article class="share-card compact-share-card"><p>招待用共有コード</p><div class="share-code-row"><strong id="share-code" tabindex="0"></strong><button id="copy-code-button" class="copy-button" type="button">コピー</button></div><small>初回参加・新端末参加に使用します</small></article>
+          <article class="details-card"><h3>セッション情報</h3><dl><div><dt>役割</dt><dd id="detail-role"></dd></div><div><dt>店舗</dt><dd id="detail-store"></dd></div><div><dt>機種 / 台</dt><dd id="detail-machine"></dd></div><div><dt>開始時刻</dt><dd id="detail-started-at"></dd></div><div><dt>貸出</dt><dd id="detail-rental"></dd></div><div><dt>交換</dt><dd id="detail-exchange"></dd></div><div><dt>開始軍資金</dt><dd id="detail-initial-cash"></dd></div><div><dt>開始持ちメダル</dt><dd id="detail-starting-medals"></dd></div></dl></article>
+          <article class="danger-card"><h3>セッション終了</h3><p>終了後も「終了済みセッション」から閲覧できます。誤操作防止のため確認が表示されます。</p><button id="finish-session-button" class="danger-button session-action" type="button">セッションを終了</button></article>
+          <article id="hard-delete-card" class="danger-card hard-delete-card" hidden><h3>完全削除</h3><p>セッション本体・ログ・指示・コメント・画像を完全に削除します。元に戻せません。作成者のみ、終了済みセッションで実行できます。</p><button id="hard-delete-session-button" class="danger-button danger-solid" type="button">完全に削除</button></article>
+        </section>
+
+        <nav class="session-tabs" aria-label="セッションメニュー"><button data-session-tab="live" class="is-active" type="button"><span>●</span>ライブ</button><button data-session-tab="counter" type="button"><span>±</span>カウンター</button><button data-session-tab="log" type="button"><span>≡</span>ログ</button><button data-session-tab="instruction" type="button"><span>↔</span>共有</button><button data-session-tab="image" type="button"><span>▣</span>画像</button><button data-session-tab="info" type="button"><span>i</span>情報</button></nav>
+      </section>
+    </main>
+
+    <dialog id="options-dialog" class="app-dialog"><div class="dialog-heading"><div><p class="eyebrow">OPTIONS</p><h2>オプション</h2></div><button data-close-dialog type="button" aria-label="閉じる">×</button></div><fieldset class="theme-options"><legend>テーマ</legend><label><input type="radio" name="theme" value="light"><span>通常</span></label><label><input type="radio" name="theme" value="dark"><span>ダーク</span></label></fieldset></dialog>
+
+    <dialog id="instruction-dialog" class="app-dialog"><div class="dialog-heading"><div><p class="eyebrow">NEW NOTE</p><h2>指示メモを追加</h2></div><button data-close-dialog type="button" aria-label="閉じる">×</button></div><form id="instruction-form" class="dialog-form session-action"><div id="instruction-target-label" class="target-label" hidden></div><input name="target_type" type="hidden" value="session"><input name="target_event_id" type="hidden"><input name="target_counter_id" type="hidden"><input name="target_field" type="hidden"><label>タイトル<input name="title" maxlength="100" required></label><label>本文 <span class="optional">任意</span><textarea name="body" rows="4" maxlength="1000"></textarea></label><label>優先度<select name="priority"><option value="normal">通常</option><option value="high">高</option><option value="low">低</option></select></label><label class="check-label"><input name="pinned" type="checkbox"><span>ピン留めする</span></label><button class="primary-button submit-button" type="submit">指示メモを共有</button></form></dialog>
+
+    <dialog id="at-end-dialog" class="app-dialog"><div class="dialog-heading"><div><p class="eyebrow">AT END</p><h2>AT終了を記録</h2></div><button data-close-dialog type="button" aria-label="閉じる">×</button></div><p class="dialog-note">獲得枚数はAT終了ログとして保存します。必要なときだけ同じ枚数を現在持ちメダルにも反映できます。</p><form id="at-end-form" class="dialog-form session-action"><label>終了時現在G<input name="game_count" type="number" min="0" inputmode="numeric" required></label><label>獲得枚数<input name="acquired_medals" type="number" min="1" inputmode="numeric" required></label><label class="check-label sync-medals-check"><input name="sync_current_medals" type="checkbox"><span>この獲得枚数を現在持ちメダルにも反映する</span></label><label>メモ <span class="optional">任意</span><textarea name="note" rows="2" maxlength="300"></textarea></label><button class="primary-button submit-button" type="submit">AT終了を記録</button></form></dialog>
+
+    <footer>WWB Field Reporter · v0.4</footer>
+  </body>
+</html>
