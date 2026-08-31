@@ -11,14 +11,19 @@ function isPlaceholder(value) {
   return !value || value.startsWith("YOUR_");
 }
 
-async function loadConfig() {
-  try {
-    return await import("./config.js");
-  } catch (error) {
-    throw new SupabaseConfigurationError(
-      "js/config.js が見つかりません。設定例をコピーして作成してください。",
-    );
+const CONFIG_MODULE_PATHS = Object.freeze(["./config.js", "./config.public.js"]);
+
+export async function loadConfig(modulePaths = CONFIG_MODULE_PATHS) {
+  for (const modulePath of modulePaths) {
+    try {
+      return await import(modulePath);
+    } catch {
+      // Local config is optional on static hosting; continue to the public config.
+    }
   }
+  throw new SupabaseConfigurationError(
+    "Supabase設定を読み込めません。js/config.jsまたはjs/config.public.jsを確認してください。",
+  );
 }
 
 function waitForSupabaseLibrary(timeoutMs = 8000) {
@@ -44,7 +49,7 @@ export async function initializeSupabase() {
   const { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } = await loadConfig();
   if (isPlaceholder(SUPABASE_URL) || isPlaceholder(SUPABASE_PUBLISHABLE_KEY)) {
     throw new SupabaseConfigurationError(
-      "js/config.js のSUPABASE_URLとSUPABASE_PUBLISHABLE_KEYを実際の値に置き換えてください。",
+      "Supabase設定のSUPABASE_URLとSUPABASE_PUBLISHABLE_KEYを実際の値に置き換えてください。",
     );
   }
   if (!/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.test(SUPABASE_URL)) {
