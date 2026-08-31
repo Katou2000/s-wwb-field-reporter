@@ -1,13 +1,2 @@
-async function loadConfig() {
-  try {
-    return await import("./config.js");
-  } catch {
-    try {
-      return await import("./config.public.js");
-    } catch {
-      throw new SupabaseConfigurationError(
-        "Supabase設定ファイルが見つかりません。",
-      );
-    }
-  }
-}
+export const SUPABASE_URL = "https://kflqqtqflkqyhxwwnpyb.supabase.co";
+export const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_B7PWI2usLsiCH8TaW_0nNQ_5X-x5GFa";
